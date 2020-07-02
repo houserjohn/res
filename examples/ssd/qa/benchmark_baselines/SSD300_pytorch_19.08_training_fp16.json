@@ -1,0 +1,40 @@
+{
+   "bs" : [
+       32,
+       64
+   ],
+   "metric_keys" : [
+      "images_per_second"
+   ],
+   "metrics" : {
+      "1" : {
+         "32" : {
+            "images_per_second" : 215.2965363
+         },
+         "64" : {
+            "images_per_second" : 232.2175507
+         }
+      },
+      "4" : {
+         "32" : {
+            "images_per_second" : 828.6268066
+         },
+         "64" : {
+            "images_per_second" : 910.7668457
+         }
+      },
+      "8" : {
+         "32" : {
+            "images_per_second" : 1647.737451
+         },
+         "64" : {
+            "images_per_second" : 1769.480322
+         }
+      }
+   },
+   "ngpus" : [
+      1,
+      4,
+      8
+   ]
+}

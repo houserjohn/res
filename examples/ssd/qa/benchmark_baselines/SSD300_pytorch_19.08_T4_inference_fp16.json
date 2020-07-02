@@ -1,0 +1,7 @@
+{"bs": [1, 2, 4, 8],
+ "metric_keys": ["images_per_second"],
+ "metrics": {"1": {"1": {"images_per_second": 74.01884855},
+                   "2": {"images_per_second": 128.203792},
+                   "4": {"images_per_second": 159.1936841},
+                   "8": {"images_per_second": 171.6748079}}},
+ "ngpus": [1]}

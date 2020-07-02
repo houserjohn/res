@@ -1,0 +1,34 @@
+{
+   "bs" : [
+      2,
+      4,
+      8,
+      16,
+      32
+   ],
+   "metric_keys" : [
+      "images_per_second"
+   ],
+   "metrics" : {
+      "1" : {
+         "16" : {
+            "images_per_second" : 278.0238225
+         },
+         "2" : {
+            "images_per_second" : 148.9910168
+         },
+         "32" : {
+            "images_per_second" : 299.8149215
+         },
+         "4" : {
+            "images_per_second" : 203.345354
+         },
+         "8" : {
+            "images_per_second" : 227.3167642
+         }
+      }
+   },
+   "ngpus" : [
+      1
+   ]
+}

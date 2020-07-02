@@ -1,0 +1,61 @@
+{
+    "run": {
+        "cpu_info_num": 96,
+        "cpu_info_name": "Intel(R) Xeon(R) Platinum 8168 CPU @ 2.70GHz",
+        "mem_info_ram": "251G",
+        "gpu_info_driver_version": "410.79",
+        "gpu_info_num": 8,
+        "gpu_info_name": [
+            "Tesla V100-PCIE-32GB",
+            "Tesla V100-PCIE-32GB",
+            "Tesla V100-PCIE-32GB",
+            "Tesla V100-PCIE-32GB",
+            "Tesla T4",
+            "Tesla T4",
+            "Tesla T4",
+            "Tesla T4"
+        ],
+        "gpu_info_mem": [
+            "32480 MiB",
+            "32480 MiB",
+            "32480 MiB",
+            "32480 MiB",
+            "15079 MiB",
+            "15079 MiB",
+            "15079 MiB",
+            "15079 MiB"
+        ],
+        "args_load_checkpoint_path": null,
+        "args_n_users": 138493,
+        "args_n_items": 26744,
+        "args_factors": 64,
+        "args_dropout": 0.5,
+        "args_layers": [
+            256,
+            256,
+            128,
+            64
+        ],
+        "args_batch_size": 1,
+        "args_opt_level": "O0",
+        "model_hp_mf_dim": 64,
+        "model_hp_mlp_layer_sizes": [
+            256,
+            256,
+            128,
+            64
+        ],
+        "batch_size": 1,
+        "best_inference_throughput": 2470.1436984687866,
+        "best_inference_latency": 0.0004048347473144531
+    },
+    "epoch": {
+        "x": [],
+        "eval_accuracy": [],
+        "it_per_sec": []
+    },
+    "iter": {
+        "x": [],
+        "loss": []
+    }
+}

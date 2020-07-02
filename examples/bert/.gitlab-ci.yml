@@ -1,0 +1,272 @@
+# Copyright (c) 2018-2019, NVIDIA CORPORATION. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+#######################################################
+## Variables
+######################################################
+variables:
+    SOURCE_GROUP:         "${CI_REGISTRY}/dl/dgx"
+    FRAMEWORK:            "pytorch" # might be overridden by a particular benchmark
+    FRAMEWORK_VERSION:    "19.06"
+    FRAMEWORK_IMAGE_TYPE: "py3-devel"
+    GIT_SUBMODULE_STRATEGY: "recursive"
+
+before_script:
+    - export BENCHMARK="${CI_JOB_NAME%%--*}"                                    && echo "${BENCHMARK}"
+    - echo "BENCHMARK_NAME=${BENCHMARK}"
+    - echo "FRAMEWORK_NAME=${FRAMEWORK}"
+    
+######################################################
+## Stages
+######################################################
+
+stages:
+    - benchmark
+
+.benchmark: &BENCHMARK_ON_CLUSTER
+    stage: benchmark
+    after_script:
+    - echo "GPFSFOLDER=${GPFSFOLDER}"
+    - export CI_TMPDIR="${GPFSFOLDER}/${CI_JOB_ID}"
+    - source "${CI_TMPDIR}/.env"
+    - export SLURM_STATE=$(${CI_TMPDIR}/jobscripts/mlperf-ci/jobstate.sh "${SLURM_JOBID}");  echo "SLURM_JOBID=${SLURM_JOBID} SLURM_STATE=${SLURM_STATE:-<EMPTY>}"
+    - if [ "${SLURM_STATE}" != "COMPLETED" ]; then scancel --verbose "${SLURM_JOBID}" 2>/dev/null || true ; fi # cancel the job in case the CI run failed.
+    #- rm -rf "${CI_TMPDIR}" ## careful about cleaning this up, as the results logs are also in there.
+    script:
+    - set -x
+    # Set up a working directory that is available cluster-wide.
+    - echo "GPFSFOLDER=${GPFSFOLDER}"
+    - export CI_TMPDIR="${GPFSFOLDER}/${CI_JOB_ID}"
+    - mkdir -p "${CI_TMPDIR}" && chmod 755 "${CI_TMPDIR}"
+    - export ENROOT_CONFIG_PATH="${CI_TMPDIR}/.enroot" && mkdir -p "${ENROOT_CONFIG_PATH}"
+    - echo "machine ${CI_REGISTRY/:5005/} login ${CI_REGISTRY_USER} password ${CI_BUILD_TOKEN}" > "${ENROOT_CONFIG_PATH}/.credentials"
+    # Fetch job scripts
+    - export CODEDIR="${PWD}" && echo "CODEDIR=${CODEDIR}"
+    - export JOBSCRIPTSDIR="${CI_TMPDIR}/jobscripts" && echo "JOBSCRIPTSDIR=${JOBSCRIPTSDIR}"
+    - git clone --depth=1 "https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab-master.nvidia.com/dl/devops/run-scripts.git" "${JOBSCRIPTSDIR}"
+    - export LOGDIR="${CI_TMPDIR}/results" && echo "LOGDIR=${LOGDIR}" && mkdir -p "${LOGDIR}"
+    - export DATESTAMP="$(date +'%y%m%d%H%M%S%N')" && echo "DATESTAMP=${DATESTAMP}"
+    - export DGXSYSTEM="${CI_JOB_NAME#*--}" && export DGXSYSTEM="${DGXSYSTEM%%--*}" && echo "DGXSYSTEM=${DGXSYSTEM}"
+    - export JOBNAME="${CI_PIPELINE_ID}:${GITLAB_USER_LOGIN}:${BENCHMARK}:${CI_PROJECT_PATH}:${CI_COMMIT_REF_NAME}:${CI_JOB_ID}"
+    - echo "PWD=${PWD}"
+    # Launch the job
+    - export CONT="${DEST_IMAGE_VERSIONED/:5005/}"
+    - cd "${CODEDIR}" && sbatch --job-name="${BENCHMARK}" --account="${SLURM_ACCOUNT}" --partition="${SLURM_PARTITION}" --nodes="${NNODES}" --ntasks-per-node="${NGPUS}" run.sub | tee "${LOGDIR}/sbatch.log"
+    # Wait for job to launch
+    - sleep 10s # Without this, "sacct" in jobstate.sh does not always find the SLURM job.
+    - export SLURM_JOBID=$(grep 'Submitted batch job' "${LOGDIR}/sbatch.log" | awk '{ print $4 }')
+    - export SLURM_OUTPUT=$(scontrol show job "${SLURM_JOBID}" | grep 'StdOut' | awk -F '=' '{ print $2 }')
+    - cd ${JOBSCRIPTSDIR}/mlperf-ci
+    - ./jobwait.sh "${SLURM_JOBID}" & PID=$!
+    - export -p > "${CI_TMPDIR}/.env" # Save environment (to restore it in after_script).
+    - touch "${SLURM_OUTPUT}"
+    - echo -e " ---------------------------------------------------\n"
+               "----------WAITING FOR SLURM JOB TO BEGIN-----------\n"
+               "---------------------------------------------------\n"
+               "$(scontrol show job=${SLURM_JOBID})\n"
+               "---------------------------------------------------\n"
+    # Follow output of the job
+    - tail --pid="${PID}" -f "${SLURM_OUTPUT}" # Stream job output until it finishes.
+    # Report job exit status
+    - cd ${JOBSCRIPTSDIR}/mlperf-ci
+    - export SLURM_NODELIST=$(./jobnodes.sh "${SLURM_JOBID}");    echo "SLURM_NODELIST=${SLURM_NODELIST:-<EMPTY>}"
+    - export SLURM_STATE=$(./jobstate.sh "${SLURM_JOBID}");       echo "SLURM_JOBID=${SLURM_JOBID} SLURM_STATE=${SLURM_STATE:-<EMPTY>}"
+    - export SLURM_WALLTIME=$(./jobtime.sh "${SLURM_JOBID}");     echo "SLURM_WALLTIME=${SLURM_WALLTIME} secs"
+    - export SLURM_EXITCODE=$(./jobexitcode.sh "${SLURM_JOBID}"); echo "SLURM_EXITCODE=${SLURM_EXITCODE:-999}"
+    - if [ "${SLURM_EXITCODE}" != "0" ];      then exit ${SLURM_EXITCODE}; fi
+    - if [ "${SLURM_STATE}" != "COMPLETED" ]; then exit 1; fi
+    allow_failure: true
+    when: manual
+    only:
+    - merge_requests
+    - schedules
+    - web
+
+.DGX1: &DGX1
+    variables: &DGX1_VARS
+      GPFSFOLDER:    "/scratch/fs1/gitlab-runner"
+      CLUSTER:       "prom3"
+      SLURM_PARTITION: "ci-manual"
+      SLURM_ACCOUNT: "ci"
+      NGPUS: "8"
+    tags:
+    - prom3_ssh
+
+.DGX2: &DGX2
+    variables: &DGX2_VARS
+      GPFSFOLDER:    "/gpfs/fs1/svcnvdlfw"
+      CLUSTER:       "circe"
+      SLURM_PARTITION: "ci-manual"
+      SLURM_ACCOUNT: "ci"
+      NGPUS: "16"
+    tags:
+    - circe_ssh
+
+.bert: &BERT_ON_CLUSTER
+   <<: *BENCHMARK_ON_CLUSTER
+
+bert--DGX1:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX1
+  variables:
+    <<: *DGX1_VARS
+    NNODES: "1"
+    BATCHSIZE: "8192"
+    LR: "6e-3"
+    GRADIENT_STEPS: "512"
+    PHASE: "1"
+
+bert--DGX1_4x8x16x128:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX1
+  variables:
+    <<: *DGX1_VARS
+    NNODES: "4"
+    BATCHSIZE: "2048"
+    LR: "6e-3"
+    GRADIENT_STEPS: "128"
+    PHASE: "1"
+
+bert--DGX1_16x8x16x32:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX1
+  variables:
+    <<: *DGX1_VARS
+    NNODES: "16"
+    BATCHSIZE: "512"
+    LR: "6e-3"
+    GRADIENT_STEPS: "32"
+    PHASE: "1"
+
+bert--DGX2:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "1"
+    BATCHSIZE: "4096"
+    LR: "6e-3"
+    GRADIENT_STEPS: "64"
+    PHASE: "1"
+
+bert--DGX2_4x16x64x16:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "4"
+    BATCHSIZE: "1024"
+    LR: "6e-3"
+    GRADIENT_STEPS: "16"
+    PHASE: "1"
+
+bert--DGX2_16x16x64x4:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "16"
+    BATCHSIZE: "256"
+    LR: "6e-3"
+    GRADIENT_STEPS: "4"
+    PHASE: "1"
+
+bert--DGX2_64x16x64:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "64"
+    BATCHSIZE: "64"
+    LR: "6e-3"
+    GRADIENT_STEPS: "1"
+    PHASE: "1"
+
+bert--DGX1_1x8x4x1024:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX1
+  variables:
+    <<: *DGX1_VARS
+    NNODES: "1"
+    BATCHSIZE: "4096"
+    LR: "4e-3"
+    GRADIENT_STEPS: "1024"
+    PHASE: "2"
+
+bert--DGX1_4x8x4x256:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX1
+  variables:
+    <<: *DGX1_VARS
+    NNODES: "4"
+    BATCHSIZE: "1024"
+    LR: "4e-3"
+    GRADIENT_STEPS: "256"
+    PHASE: "2"
+
+bert--DGX1_16x8x4x64:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX1
+  variables:
+    <<: *DGX1_VARS
+    NNODES: "16"
+    BATCHSIZE: "256"
+    LR: "4e-3"
+    GRADIENT_STEPS: "64"
+    PHASE: "2"
+
+bert--DGX2_1x16x8x256:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "1"
+    BATCHSIZE: "2048"
+    LR: "4e-3"
+    GRADIENT_STEPS: "256"
+    PHASE: "2"
+
+bert--DGX2_4x16x8x64:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "4"
+    BATCHSIZE: "512"
+    LR: "4e-3"
+    GRADIENT_STEPS: "64"
+    PHASE: "2"
+
+bert--DGX2_16x16x8x16:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "16"
+    BATCHSIZE: "128"
+    LR: "4e-3"
+    GRADIENT_STEPS: "16"
+    PHASE: "2"
+
+bert--DGX2_64x16x8x4:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "64"
+    BATCHSIZE: "32"
+    LR: "4e-3"
+    GRADIENT_STEPS: "4"
+    PHASE: "2"
+
