@@ -1,0 +1,3 @@
+ml-100k_5core_tfo_pointfm_CL_uniform,379.7423
+ml-100k_5core_tfo_pointfm_CL_uniform,203.3358
+ml-100k_5core_tfo_pointfm_CL_uniform,189.1743
