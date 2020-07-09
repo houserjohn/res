@@ -1,3 +1,5 @@
+#To properly process data before running the model, make sure to run this file and then run shorten.py. (Note: the data for this specific model has already been processed)
+
 #dependencies
 import pandas as pd
 import numpy as np
