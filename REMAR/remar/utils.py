@@ -16,7 +16,8 @@ from torch import nn
 from collections import namedtuple
 import math
 
-from remar.vocabulary import UNK_TOKEN, PAD_TOKEN
+#from remar.vocabulary import UNK_TOKEN, PAD_TOKEN
+from vocabulary import UNK_TOKEN, PAD_TOKEN
 
 import sys
 import string

@@ -8,6 +8,8 @@ import sys
 import argparse
 import pandas as pd
 import networkx as nx
+from sklearn.model_selection import train_test_split #my addition
+test_split_ratio = 0.1 # my addition
 
 try:
     import ujson as json
@@ -42,7 +44,8 @@ def parse_yelp(args):
     assert hasattr(args, "min_cat_num"), "Please set `min_cat_num` for yelp."
     assert hasattr(args, "k_core"), "Please set `k_core` for yelp."
 
-    in_dir = INPUT_DIR + "yelp/"
+    in_dir = "/local2/zyli/irs_fn/data/raw/yelp/"
+    #in_dir = INPUT_DIR + "yelp/"
     out_dir = OUTPUT_DIR + "yelp/"
 
     print("[Yelp] processing yelp dataset ...")
